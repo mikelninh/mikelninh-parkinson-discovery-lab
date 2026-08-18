@@ -13,10 +13,18 @@ from .chembl import build_target_dataset, freeze_target_snapshot
 from .config import SplitConfig
 from .demo_data import make_demo_dataset
 from .kipu_service import run_managed_service
+from .medchem import write_medchem_artifact
 from .pipeline import run_pipeline
 from .provenance import verify_manifest
 from .quantum import compare_rimay_result, create_rimay_pilot
 from .repeats import DEFAULT_SEEDS, run_repeated_scaffold_benchmark
+from .selectivity import (
+    DEFAULT_LRRK2_PANEL,
+    annotate_selectivity,
+    freeze_selectivity_panel,
+    resolve_human_single_protein_target,
+    train_selectivity_panel,
+)
 
 
 def _seed_tuple(value: str) -> tuple[int, ...]:
@@ -31,6 +39,13 @@ def _standard_types(value: str) -> tuple[str, ...]:
     if not types:
         raise argparse.ArgumentTypeError("At least one ChEMBL standard type is required")
     return types
+
+
+def _target_tuple(value: str) -> tuple[str, ...]:
+    targets = tuple(x.strip() for x in value.split(",") if x.strip())
+    if not targets:
+        raise argparse.ArgumentTypeError("At least one target is required")
+    return targets
 
 
 def main() -> None:
@@ -108,6 +123,44 @@ def main() -> None:
     admet_annotate.add_argument("--input", required=True)
     admet_annotate.add_argument("--models", default="artifacts/admet")
     admet_annotate.add_argument("--out", default="artifacts/admet/candidates_admet.csv")
+
+    medchem = sub.add_parser(
+        "medchem-annotate",
+        help="Add QED, RDKit structural alerts, complexity and nearest-known chemistry evidence",
+    )
+    medchem.add_argument("--input", required=True)
+    medchem.add_argument("--reference", default=None, help="Known chemistry CSV for nearest-neighbour evidence")
+    medchem.add_argument("--out", default="artifacts/medchem/candidates_medchem.csv")
+
+    resolve = sub.add_parser(
+        "selectivity-resolve",
+        help="Resolve one target symbol/name to a human SINGLE PROTEIN ChEMBL target without guessing",
+    )
+    resolve.add_argument("--target", required=True)
+
+    sel_freeze = sub.add_parser(
+        "selectivity-freeze",
+        help="Freeze ChEMBL activity snapshots for a configurable LRRK2 off-target surveillance panel",
+    )
+    sel_freeze.add_argument("--targets", type=_target_tuple, default=DEFAULT_LRRK2_PANEL)
+    sel_freeze.add_argument("--standard-types", type=_standard_types, default=("IC50", "Ki"))
+    sel_freeze.add_argument("--out", default="data/selectivity")
+
+    sel_train = sub.add_parser(
+        "selectivity-train",
+        help="Train target-specific off-target activity models from frozen panel snapshots",
+    )
+    sel_train.add_argument("--input", default="data/selectivity")
+    sel_train.add_argument("--out", default="artifacts/selectivity")
+    sel_train.add_argument("--features", type=int, default=96)
+
+    sel_annotate = sub.add_parser(
+        "selectivity-annotate",
+        help="Annotate candidates with individual model-based off-target activity probabilities",
+    )
+    sel_annotate.add_argument("--input", required=True)
+    sel_annotate.add_argument("--models", default="artifacts/selectivity")
+    sel_annotate.add_argument("--out", default="artifacts/selectivity/candidates_selectivity.csv")
 
     pilot = sub.add_parser("rimay-pilot", help="Build 200–500 molecule Rimay simulator handoff bundle")
     pilot.add_argument("--input", required=True, help="rimay_input.csv from a PDL run")
@@ -208,6 +261,33 @@ def main() -> None:
         annotated.to_csv(output_path, index=False)
         summary_path = output_path.with_name(output_path.stem + "_summary.json")
         summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        print(json.dumps({**summary, "output": str(output_path)}, indent=2))
+    elif args.command == "medchem-annotate":
+        input_path = Path(args.input)
+        reference_path = Path(args.reference) if args.reference else None
+        reference = pd.read_csv(reference_path) if reference_path else None
+        result = write_medchem_artifact(
+            pd.read_csv(input_path), Path(args.out), reference=reference, reference_path=reference_path
+        )
+        print(json.dumps(result, indent=2))
+    elif args.command == "selectivity-resolve":
+        print(json.dumps(resolve_human_single_protein_target(args.target), indent=2))
+    elif args.command == "selectivity-freeze":
+        result = freeze_selectivity_panel(
+            args.targets, Path(args.out), standard_types=args.standard_types
+        )
+        print(json.dumps(result, indent=2, default=str))
+    elif args.command == "selectivity-train":
+        result = train_selectivity_panel(Path(args.input), Path(args.out), descriptor_count=args.features)
+        print(json.dumps(result, indent=2, default=str))
+    elif args.command == "selectivity-annotate":
+        output_path = Path(args.out)
+        annotated, summary = annotate_selectivity(pd.read_csv(args.input), Path(args.models))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        annotated.to_csv(output_path, index=False)
+        output_path.with_name(output_path.stem + "_summary.json").write_text(
+            json.dumps(summary, indent=2), encoding="utf-8"
+        )
         print(json.dumps({**summary, "output": str(output_path)}, indent=2))
     elif args.command == "rimay-pilot":
         result = create_rimay_pilot(Path(args.input), Path(args.out), args.size, args.seed)
