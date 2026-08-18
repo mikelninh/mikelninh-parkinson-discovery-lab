@@ -1,250 +1,353 @@
 # Parkinson Discovery Lab 🧠🧬⚛️
 
-An evidence-first molecular ML benchmark for **Parkinson's disease drug-discovery research**, starting with human **LRRK2**. The core question is deliberately narrow:
+An evidence-first molecular ML benchmark for **Parkinson's disease drug-discovery research**, starting with human **LRRK2**.
+
+The project asks a deliberately narrow question:
 
 > **Can Kipu Rimay quantum-derived molecular features improve held-out LRRK2 activity prediction beyond strong classical baselines on chemically novel scaffolds?**
 
-Kipu's Tinkuq assessment rated this setup **Suitable (85/100)** and recommended **Rimay – Quantum Feature Extraction** for the 1,000–4,000 molecule / 96–128 feature regime. That is a provider assessment, **not a measured performance result**. V0.2 turns the assessment into a falsifiable experiment.
+The project does **not** claim that target binding equals disease modification, that a predicted molecule is a drug, or that quantum advantage exists before it is measured.
 
-## V0.2: from “quantum-ready” to an actual Rimay experiment
+## V0.3 — frozen provenance + assay context
+
+V0.3 upgrades the project from a reproducible ML pipeline to a **reproducible scientific dataset/run contract**.
 
 ```text
-ChEMBL LRRK2 activities
-        ↓
-strict cleaning + provenance
-        ↓
-canonical molecules + pChEMBL labels
-        ↓
+live ChEMBL
+    ↓
+freeze raw activities + assay metadata + release/query contract
+    ↓
+SHA-256 verified source snapshot
+    ↓
+canonical molecules + assay-context diagnostics
+    ↓
+label quality / heterogeneity audit
+    ↓
 Bemis–Murcko scaffold split
-        ↓
-┌───────────────────────────┐
-│ Classical baselines       │
-│ descriptor LR / RF / HGB  │
-│ Morgan-fingerprint LR     │
-└─────────────┬─────────────┘
-              ↓
-      frozen benchmark
-              ↓
+    ↓
+classical baselines + frozen run manifest
+    ↓
 96-feature Rimay export
-              ↓
-200–500 molecule pilot bundle
-              ↓
-Rimay Simulator / subscribed service
-              ↓
-returned quantum features or probabilities
-              ↓
-┌──────────────────────────────┐
-│ same molecules + same split  │
-│ ROC-AUC / PR-AUC / F1/Brier  │
-└──────────────┬───────────────┘
-               ↓
-      quantum-v-classical delta
-               ↓
- repeated scaffold seeds before any
-       “quantum advantage” claim
+    ↓
+quantum-v-classical benchmark
 ```
 
-## What changed from V0.1
+### What V0.3 adds
 
-- **Rimay pilot builder**: deterministic 200–500 molecule handoff bundle.
-- **Rimay result importer/comparator**: accepts returned quantum features *or* probabilities and evaluates them on the frozen split.
-- **Repeated scaffold benchmarks**: multi-seed classical baselines with mean/std/95% normal-approximation confidence intervals.
-- **Kipu managed-service adapter**: optional official `qhub-service` SDK integration, without guessing Rimay's private/subscription-specific request schema.
-- **Stricter feature contract**: at most 155 features; default remains 96.
-- **Assay-type control**: `IC50,Ki` by default, with easy `--standard-types IC50` sensitivity runs.
-- **Dashboard V0.2**: shows Rimay status and quantum-classical deltas once a result is imported.
-- **No fake quantum score**: Kipu's forecast is recorded as a hypothesis to test, not as a result.
+- **Frozen ChEMBL snapshots** with raw activity JSONL, raw assay JSONL, cleaned molecule CSV and source manifest.
+- **ChEMBL release metadata** captured at snapshot time when the API exposes it.
+- **SHA-256 integrity hashes** for source snapshots and generated run artifacts.
+- **Deterministic run IDs** derived from the prepared dataset and experiment contract.
+- **Environment fingerprinting** for Python, RDKit, pandas, NumPy, scikit-learn and requests.
+- **Assay-context audit**: standard type, assay type/organism, pChEMBL dispersion, label agreement and heterogeneity flags.
+- **Quality filters** for excessive pChEMBL IQR and low measurement/label agreement.
+- **No assay shortcut**: assay context is metadata/quality evidence, not silently inserted into the molecular predictor.
+- **`pdl verify`** to detect missing or modified snapshot/run artifacts.
+- Dashboard now surfaces snapshot/run identity and assay heterogeneity.
 
-## 1. Run the software immediately
-
-The demo uses **synthetic molecules and labels** only to prove the software path works.
+## 1. Install
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-pdl demo --out artifacts/demo
-pdl serve --artifacts artifacts/demo
+pytest
 ```
 
-Open `http://127.0.0.1:8000`.
+## 2. Freeze the real LRRK2 source dataset
 
-## 2. Real LRRK2 benchmark
+This is the preferred V0.3 path:
 
 ```bash
-pdl fetch-chembl --target LRRK2 --out data/lrrk2_chembl.csv
-pdl run --input data/lrrk2_chembl.csv --out artifacts/lrrk2 --features 96 --seed 42
+pdl freeze-chembl \
+  --target LRRK2 \
+  --standard-types IC50,Ki \
+  --out data/snapshots/lrrk2
 ```
 
-For an assay-type sensitivity check:
+It writes:
+
+```text
+data/snapshots/lrrk2/
+├── raw_activities.jsonl
+├── raw_assays.jsonl
+├── cleaned_molecules.csv
+└── snapshot_manifest.json
+```
+
+The manifest records the target, filtering contract, pChEMBL thresholds, aggregation rule, ChEMBL release metadata when available, row counts and SHA-256 hashes.
+
+A stricter sensitivity snapshot can be created independently:
 
 ```bash
-pdl fetch-chembl --target LRRK2 --standard-types IC50 --out data/lrrk2_ic50.csv
-pdl run --input data/lrrk2_ic50.csv --out artifacts/lrrk2_ic50
+pdl freeze-chembl \
+  --target LRRK2 \
+  --standard-types IC50 \
+  --max-pchembl-iqr 1.0 \
+  --min-label-agreement 0.75 \
+  --out data/snapshots/lrrk2_ic50_strict
 ```
 
-The ChEMBL downloader requires network access. If the environment is offline, run these commands locally and keep the produced CSV snapshot under `data/` or an external data store.
+## 3. Verify the frozen source
 
-## 3. Establish baseline stability across scaffold splits
+```bash
+pdl verify --manifest data/snapshots/lrrk2/snapshot_manifest.json
+```
+
+A hash mismatch fails with exit code 2.
+
+## 4. Run the classical benchmark from that exact snapshot
+
+```bash
+pdl run \
+  --input data/snapshots/lrrk2/cleaned_molecules.csv \
+  --source-manifest data/snapshots/lrrk2/snapshot_manifest.json \
+  --out artifacts/lrrk2_v03 \
+  --features 96 \
+  --seed 42
+```
+
+The run now produces:
+
+```text
+artifacts/lrrk2_v03/
+├── dataset_prepared.csv
+├── assay_context_summary.json
+├── metrics.json
+├── best_model.joblib
+├── ranked_candidates.csv
+├── rimay_input.csv
+├── rimay_input_feature_map.csv
+├── report.md
+└── manifest.json
+```
+
+`manifest.json` links the benchmark back to the frozen source snapshot and hashes every generated artifact.
+
+## 5. Inspect assay context
+
+```bash
+pdl assay-audit \
+  --input data/snapshots/lrrk2/cleaned_molecules.csv \
+  --out artifacts/lrrk2_assay_audit.json
+```
+
+Per molecule, V0.3 can preserve:
+
+- measurement count;
+- assay and document count;
+- standard types;
+- assay types and assay organisms when supplied by ChEMBL;
+- pChEMBL median/min/max/IQR;
+- label agreement across repeated measurements;
+- transparent context-quality score;
+- assay-heterogeneity flag.
+
+These fields are **not part of the 96 molecular features sent to Rimay**.
+
+## 6. Baseline stability across scaffold splits
 
 ```bash
 pdl repeat \
-  --input data/lrrk2_chembl.csv \
+  --input data/snapshots/lrrk2/cleaned_molecules.csv \
   --out artifacts/lrrk2_repeated \
   --seeds 11,23,42,71,101
 ```
 
-Outputs:
+A single scaffold split can be unusually easy or hard; repeated seeds provide a better picture of stability.
 
-- `repeated_metrics.csv` — one row per seed × model.
-- `repeated_summary.json` — mean/std/CI by model.
-- per-seed model artifacts for auditability.
-
-This is important because a single scaffold split can flatter or punish a molecular model by chance.
-
-## 4. Build the Rimay Simulator pilot
-
-Kipu's assessment recommends sharing **200–500 molecules** first. V0.2 creates that handoff from the already-frozen experiment:
+## 7. Rimay pilot
 
 ```bash
 pdl rimay-pilot \
-  --input artifacts/lrrk2/rimay_input.csv \
+  --input artifacts/lrrk2_v03/rimay_input.csv \
   --out artifacts/rimay_pilot \
   --size 300
 ```
 
-The bundle contains:
+Run the same molecules/split through **Rimay – Quantum Feature Extraction – Simulator** first.
 
-- `rimay_pilot.csv`
-- `rimay_pilot_manifest.json`
-- `README.md`
-
-Use **Rimay – Quantum Feature Extraction – Simulator** first. Keep the supplied `molecule_id`, `active_label`, and `split` unchanged.
-
-## 5. Import the Rimay result
-
-V0.2 supports either:
-
-### A. Quantum features
-
-A CSV with `molecule_id` plus numeric returned feature columns.
-
-### B. Quantum probabilities
-
-A CSV with `molecule_id,prediction`, where `prediction` is the active-class probability in `[0,1]`.
-
-Then:
+Then import returned features or active-class probabilities:
 
 ```bash
 pdl rimay-compare \
-  --prepared artifacts/lrrk2/dataset_prepared.csv \
+  --prepared artifacts/lrrk2_v03/dataset_prepared.csv \
   --rimay-result path/to/rimay_result.csv \
-  --baseline artifacts/lrrk2/metrics.json \
-  --out artifacts/lrrk2/quantum_comparison.json
+  --baseline artifacts/lrrk2_v03/metrics.json \
+  --out artifacts/lrrk2_v03/quantum_comparison.json
 ```
 
-The comparator refuses missing/duplicate molecule IDs and checks returned labels/splits if supplied. It aligns by molecule ID, **never by row order**.
-
-## 6. Optional direct Kipu Hub API integration
-
-Kipu's current Hub docs provide an official Python **Service SDK** for subscribed managed services. Install the optional integration:
-
-```bash
-pip install -e ".[kipu]"
-```
-
-After subscribing to the Rimay Simulator in a Kipu application, obtain the gateway endpoint and access keys from the application. Set:
-
-```bash
-export KIPU_ACCESS_KEY_ID="..."
-export KIPU_SECRET_ACCESS_KEY="..."
-```
-
-Then provide a JSON request that matches **the actual OpenAPI/request schema shown for your subscribed Rimay service**:
-
-```bash
-pdl kipu-run \
-  --endpoint "https://gateway.hub.kipu-quantum.com/..." \
-  --request rimay_request.json \
-  --out artifacts/lrrk2/kipu_execution.json
-```
-
-The repository intentionally does **not** invent a Rimay payload schema that we cannot verify publicly.
-
-## Agentic Kipu integration
-
-Kipu also exposes a hosted MCP server at:
-
-```text
-https://api.hub.kipu-quantum.com/mcp
-```
-
-MCP-capable clients can authenticate through OAuth and use the Hub tools, including a `run_subscribed_service` tool. See `docs/kipu.md` for a project-level configuration example.
+The comparator aligns by `molecule_id`, never row order.
 
 ## Classical benchmark contract
 
-Model family selection happens on **validation scaffolds only**. After selection, each baseline is refit on train + validation and evaluated once on the test scaffolds.
+Model-family selection happens on **validation scaffolds only**. Each model is then refit on train + validation and evaluated once on untouched test scaffolds.
+
+Models:
+
+- descriptor logistic regression;
+- descriptor random forest;
+- descriptor histogram gradient boosting;
+- Morgan-fingerprint logistic regression.
 
 Metrics:
 
-- ROC-AUC
-- PR-AUC (primary selection metric)
-- F1
-- accuracy
-- Brier score / calibration
+- PR-AUC — primary model-selection metric;
+- ROC-AUC;
+- F1;
+- accuracy;
+- Brier score.
 
 Representations:
 
-- 96 selected RDKit descriptors
-- 1,024-bit Morgan fingerprints (classical-only baseline)
+- 96 selected RDKit numerical descriptors for the Rimay-comparable path;
+- 1,024-bit Morgan fingerprints as a stronger classical-only representation baseline.
 
-## ChEMBL cleaning defaults
+## ChEMBL cleaning contract
 
-- human LRRK2 target `CHEMBL1075104`
-- quantitative `IC50` and `Ki`
-- valid `pChEMBL` values
-- equality measurements only
-- repeated values aggregated by median per canonical structure
-- `pChEMBL >= 6` → active
-- `pChEMBL <= 5` → inactive
-- `5 < pChEMBL < 6` → excluded as ambiguous
-- assay/document IDs preserved
+Defaults:
 
-**Caveat:** heterogeneous IC50/Ki assays are not perfectly interchangeable. V0.2 makes single-type sensitivity runs easy; later versions should explicitly model assay context.
+- human LRRK2: `CHEMBL1075104`;
+- `IC50` + `Ki`;
+- `standard_relation == "="`;
+- valid pChEMBL values;
+- canonical structure is the ML unit;
+- repeated measurements aggregated by median;
+- `pChEMBL >= 6` → active;
+- `pChEMBL <= 5` → inactive;
+- `5 < pChEMBL < 6` → ambiguous and excluded;
+- source assay/document/activity IDs preserved;
+- label dispersion and context heterogeneity recorded.
+
+IC50 and Ki from heterogeneous assays are not mechanistically identical. V0.3 therefore makes the heterogeneity visible, supports single-type sensitivity snapshots, and avoids pretending the pooled label is perfect ground truth.
 
 ## Quantum win condition
 
-We do **not** ask whether Rimay beats a weak baseline. We ask whether it beats the **strongest classical pipeline** under the same chemistry split.
+We do **not** ask whether Rimay beats a weak baseline.
 
-A credible win requires:
+A credible positive result requires:
 
 1. same molecules;
 2. same frozen scaffold split;
-3. no preprocessing fitted on validation/test labels;
-4. improvement in held-out ROC-AUC/PR-AUC, not just training accuracy;
-5. replication across scaffold seeds;
-6. runtime and compute cost reported;
-7. no extrapolation from target binding to clinical efficacy.
+3. identical label contract;
+4. no preprocessing fitted on validation/test labels;
+5. improvement over the strongest classical comparator on held-out data;
+6. replication across multiple scaffold splits;
+7. uncertainty/statistical analysis;
+8. quantum compute/runtime/cost reported;
+9. no extrapolation from target binding to clinical efficacy.
 
-Kipu's Tinkuq report forecast **+5–12 percentage points ROC-AUC**. V0.2 treats that number as a **provider hypothesis to verify**, not a promised outcome.
+A negative result is also useful: if Rimay does not improve this benchmark, the repository should say so plainly.
 
 ## Scientific boundary
 
-Target activity is only the first part of:
+LRRK2 target activity addresses only the first part of the chain:
 
-`binding → target engagement → cellular biology → brain exposure → safety → disease mechanism → patient subgroup → clinical efficacy`
+```text
+binding
+  → target engagement
+  → cellular biology
+  → brain exposure
+  → selectivity / safety
+  → disease mechanism
+  → patient subgroup
+  → clinical efficacy
+```
 
-Outputs are **computational hypotheses**. Do not synthesize or administer compounds based on this software. A serious programme requires validated BBB/ADMET/selectivity models, structural evidence, experimental assays, PK/PD, toxicology and clinical studies.
+Outputs are **computational hypotheses**. Do not synthesize or administer compounds based on this software.
 
-## Roadmap
+## Roadmap to V1.0
 
-- **V0.1:** reproducible data → scaffold split → classical baseline → Rimay-ready export.
-- **V0.2 (this version):** Rimay pilot/import loop + repeated scaffold benchmark + optional Kipu SDK integration.
-- **V0.3:** real frozen ChEMBL snapshot + assay-context modelling + data/version provenance hashes.
-- **V0.4:** externally validated BBB/ADMET/toxicity models + uncertainty.
-- **V0.5:** selectivity/off-target panel + medicinal-chemistry alerts.
-- **V0.6:** real Rimay simulator/hardware repeated results + cost/latency benchmark.
-- **V1:** large-library screening + novelty + structural/docking evidence + expert-reviewed experimental shortlist.
+### V0.3 — reproducible source + assay context ✅
+
+Frozen ChEMBL snapshot, integrity hashes, release/query provenance, assay heterogeneity, quality diagnostics and verifiable run manifests.
+
+### V0.4 — real multi-property evidence
+
+Replace heuristic CNS/drug-likeness scores with independently validated predictors/datasets for:
+
+- BBB permeability;
+- solubility;
+- basic ADME;
+- toxicity endpoints;
+- calibrated uncertainty and applicability domain.
+
+The goal is **not** one magic score; preserve each endpoint and its uncertainty separately.
+
+### V0.5 — selectivity + medicinal chemistry
+
+Add:
+
+- off-target/selectivity panel;
+- structural-alert flags;
+- novelty / nearest-neighbour evidence;
+- synthesizability estimates;
+- disagreement analysis across model families.
+
+### V0.6 — real quantum benchmark
+
+Run Rimay Simulator and, if justified, hardware on the frozen benchmark:
+
+- repeated scaffold splits;
+- quantum vs classical confidence intervals;
+- compute time and cost;
+- feature/disagreement analysis;
+- explicit pass/fail decision on whether quantum adds value here.
+
+### V0.7 — virtual screening
+
+Screen a larger external compound library while enforcing:
+
+- applicability-domain checks;
+- uncertainty thresholds;
+- deduplication against training chemistry;
+- novelty/diversity selection;
+- reproducible library provenance.
+
+### V0.8 — structural evidence
+
+Add orthogonal structure-based evidence where credible:
+
+- protein-structure provenance;
+- conformer generation;
+- docking/pose scoring as supporting evidence, not truth;
+- consensus with ligand-based models;
+- failure/uncertainty flags.
+
+### V0.9 — candidate evidence cards + expert review gate
+
+Generate auditable candidate cards showing:
+
+- source molecule identity;
+- predicted LRRK2 activity;
+- BBB/ADME/toxicity/selectivity estimates;
+- uncertainty/applicability domain;
+- nearest known chemistry;
+- classical vs quantum rank;
+- structural evidence;
+- reasons to reject as well as reasons to investigate.
+
+No candidate advances without a human scientific review gate.
+
+### V1.0 — experimentally actionable shortlist
+
+V1.0 is reached when the system can reproducibly take a frozen source/library snapshot and produce an **expert-reviewable top computational shortlist** with complete evidence provenance.
+
+V1.0 success is **not** “we found a Parkinson's drug.” It is:
+
+> **We built a reproducible system that narrows a large chemical search space into a small, evidence-rich set of hypotheses worth experimental testing — and can quantify whether quantum feature extraction improved that process.**
+
+## Development
+
+```bash
+pytest
+ruff check src tests
+pdl demo --out artifacts/demo
+pdl verify --manifest artifacts/demo/manifest.json
+pdl serve --artifacts artifacts/demo
+```
+
+Open `http://127.0.0.1:8000`.
 
 ## License
 

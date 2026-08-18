@@ -9,7 +9,7 @@ import pandas as pd
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 
-app = FastAPI(title="Parkinson Discovery Lab", version="0.2.0")
+app = FastAPI(title="Parkinson Discovery Lab", version="0.3.0")
 
 
 def artifact_dir() -> Path:
@@ -23,7 +23,7 @@ def _load_json(name: str) -> dict:
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "version": "0.2.0", "artifact_dir": str(artifact_dir())}
+    return {"status": "ok", "version": "0.3.0", "artifact_dir": str(artifact_dir())}
 
 
 @app.get("/api/metrics")
@@ -41,7 +41,10 @@ def candidates(limit: int = Query(20, ge=1, le=200)) -> list[dict]:
     path = artifact_dir() / "ranked_candidates.csv"
     if not path.exists():
         return []
-    cols = ["rank", "molecule_id", "smiles", "predicted_activity", "cns_likeness_proxy", "drug_likeness_proxy", "lipinski_pass", "rank_score"]
+    cols = [
+        "rank", "molecule_id", "smiles", "predicted_activity", "cns_likeness_proxy",
+        "drug_likeness_proxy", "lipinski_pass", "rank_score",
+    ]
     df = pd.read_csv(path).head(limit)
     return df[[c for c in cols if c in df]].to_dict(orient="records")
 
@@ -68,6 +71,10 @@ def dashboard() -> str:
             f"<td>{r['rank_score']:.3f}</td></tr>"
         )
     best = metrics_data.get("best_model", "—")
+    snapshot_id = (manifest.get("source_snapshot") or {}).get("snapshot_id") or "unfrozen input"
+    run_id = manifest.get("run_id", "—")
+    artifact_count = len(manifest.get("artifact_sha256") or {})
+    heterogeneity = (manifest.get("assay_context") or {}).get("heterogeneous_molecules", "—")
     delta = quantum.get("delta_rimay_minus_classical", {})
     if quantum:
         quantum_card = f"""
@@ -93,14 +100,15 @@ h1{{font-size:clamp(38px,6vw,68px);letter-spacing:-.05em;margin:12px 0}}h2{{marg
 .metric{{font-size:30px;font-weight:800;letter-spacing:-.03em}} table{{width:100%;border-collapse:collapse}}td,th{{padding:10px;border-bottom:1px solid #263849;text-align:left}}.badge{{display:inline-block;padding:7px 11px;border-radius:99px;background:#1b3440;color:var(--cyan);font-weight:700}}a{{color:var(--cyan)}}.eyebrow{{font-size:12px;letter-spacing:.15em;color:var(--accent);font-weight:800}}code{{display:block;overflow:auto;padding:14px;border-radius:12px;background:#071019;color:#c9f8ff}}.quantum{{border-color:#45633a}}
 @media(max-width:760px){{.grid,.three{{grid-template-columns:1fr 1fr}}table{{font-size:13px}}}}@media(max-width:480px){{.grid,.three{{grid-template-columns:1fr}}}}
 </style></head><body>
-<span class='badge'>V0.2 · Rimay-ready</span><h1>Parkinson Discovery Lab</h1>
-<p class='muted'>LRRK2 molecular ML → scaffold generalisation → classical baseline → Kipu/Rimay pilot → evidence-driven comparison.</p>
+<span class='badge'>V0.3 · reproducible snapshot</span><h1>Parkinson Discovery Lab</h1>
+<p class='muted'>Frozen ChEMBL provenance → assay-context audit → scaffold generalisation → classical baseline → Kipu/Rimay evidence.</p>
 <div class='grid'>
 <div class='card'><div class='metric'>{manifest.get('molecules','—')}</div><div class='muted'>molecules</div></div>
 <div class='card'><div class='metric'>{manifest.get('unique_scaffolds','—')}</div><div class='muted'>scaffolds</div></div>
 <div class='card'><div class='metric'>{manifest.get('active','—')}</div><div class='muted'>active</div></div>
 <div class='card'><div class='metric'>{html.escape(str(best))}</div><div class='muted'>selected baseline</div></div>
 </div>
+<div class='card'><div class='eyebrow'>REPRODUCIBILITY</div><h2>{html.escape(str(snapshot_id))}</h2><p class='muted'>Run ID: {html.escape(str(run_id))} · artifact hashes: {artifact_count} · assay heterogeneity: {html.escape(str(heterogeneity))}</p><code>pdl verify --manifest {html.escape(str(artifact_dir() / 'manifest.json'))}</code></div>
 {quantum_card}
 <div class='card'><h2>Top computational hypotheses</h2><table><thead><tr><th>#</th><th>Molecule</th><th>Activity P</th><th>CNS proxy</th><th>Rank</th></tr></thead><tbody>{rows}</tbody></table></div>
 <div class='card'><strong>Scientific boundary:</strong> these are computational hypotheses, not medicines. No claim of quantum advantage, safety, BBB penetration or clinical efficacy is made without the corresponding held-out and experimental evidence.</div>

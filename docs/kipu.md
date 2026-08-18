@@ -32,21 +32,25 @@ Does Rimay-derived quantum feature extraction improve LRRK2 activity classificat
 - F1
 - Brier score / calibration
 
-## V0.2 handoff loop
+## V0.3 handoff loop
 
 ```bash
-pdl rimay-pilot --input artifacts/lrrk2/rimay_input.csv --out artifacts/rimay_pilot --size 300
+pdl rimay-pilot --input artifacts/lrrk2_v03/rimay_input.csv --out artifacts/rimay_pilot --size 300
 ```
 
 Run the resulting CSV through **Rimay – Quantum Feature Extraction – Simulator** first. Export returned features or active-class probabilities, then:
 
 ```bash
 pdl rimay-compare \
-  --prepared artifacts/lrrk2/dataset_prepared.csv \
+  --prepared artifacts/lrrk2_v03/dataset_prepared.csv \
   --rimay-result rimay_result.csv \
-  --baseline artifacts/lrrk2/metrics.json \
-  --out artifacts/lrrk2/quantum_comparison.json
+  --baseline artifacts/lrrk2_v03/metrics.json \
+  --out artifacts/lrrk2_v03/quantum_comparison.json
 ```
+
+## V0.3 provenance requirement
+
+Before a result is treated as a scientific benchmark, the underlying ChEMBL data should be frozen with `pdl freeze-chembl` and the run should reference that `snapshot_manifest.json`. This prevents a later live database update from silently changing the molecules/labels under comparison.
 
 ## Managed-service API
 

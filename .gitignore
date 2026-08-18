@@ -14,3 +14,5 @@ data/*.csv
 !data/.gitkeep
 artifacts/*
 !artifacts/.gitkeep
+# Frozen ChEMBL snapshots are local/external data assets by default
+data/snapshots/
