@@ -1,49 +1,53 @@
 # Parkinson Discovery Lab 🧠🧬⚛️
 
-An evidence-first molecular ML benchmark for **Parkinson's disease drug-discovery research**, starting with human **LRRK2**.
+An evidence-first molecular ML research platform for **Parkinson's disease drug-discovery hypotheses**, starting with human **LRRK2**.
 
-The project asks a deliberately narrow question:
+The project asks two separate questions:
 
-> **Can Kipu Rimay quantum-derived molecular features improve held-out LRRK2 activity prediction beyond strong classical baselines on chemically novel scaffolds?**
+1. **Can we build a reproducible, uncertainty-aware computational pipeline that narrows chemical space into better LRRK2 hypotheses?**
+2. **Can Kipu Rimay quantum-derived molecular features improve held-out LRRK2 activity prediction beyond strong classical baselines on chemically novel scaffolds?**
 
-The project does **not** claim that target binding equals disease modification, that a predicted molecule is a drug, or that quantum advantage exists before it is measured.
+The project does **not** claim that target binding equals disease modification, that a predicted molecule is a drug, that a molecular-property model establishes clinical safety, or that quantum advantage exists before it is measured.
 
-## V0.3 — frozen provenance + assay context
+## Current milestone: V0.4 — multi-property evidence + uncertainty ✅
 
-V0.3 upgrades the project from a reproducible ML pipeline to a **reproducible scientific dataset/run contract**.
+V0.4 adds separately benchmarked **blood-brain-barrier penetration, clinical-toxicity and aqueous-solubility** models around the V0.3 LRRK2 activity benchmark.
 
 ```text
-live ChEMBL
-    ↓
-freeze raw activities + assay metadata + release/query contract
-    ↓
-SHA-256 verified source snapshot
-    ↓
-canonical molecules + assay-context diagnostics
-    ↓
-label quality / heterogeneity audit
-    ↓
-Bemis–Murcko scaffold split
-    ↓
-classical baselines + frozen run manifest
-    ↓
-96-feature Rimay export
-    ↓
-quantum-v-classical benchmark
+frozen LRRK2 ChEMBL snapshot
+            ↓
+      activity model
+            ↓
+  computational candidates
+            ↓
+ ┌──────────┼───────────┐
+ ↓          ↓           ↓
+BBBP      ClinTox      ESOL
+ ↓          ↓           ↓
+prob.      prob.       logS
+entropy    entropy     PI90
+AD sim.    AD sim.     AD sim.
+ └──────────┼───────────┘
+            ↓
+ endpoint-by-endpoint evidence
+            ↓
+ no hidden “drug probability”
 ```
 
-### What V0.3 adds
+### V0.4 adds
 
-- **Frozen ChEMBL snapshots** with raw activity JSONL, raw assay JSONL, cleaned molecule CSV and source manifest.
-- **ChEMBL release metadata** captured at snapshot time when the API exposes it.
-- **SHA-256 integrity hashes** for source snapshots and generated run artifacts.
-- **Deterministic run IDs** derived from the prepared dataset and experiment contract.
-- **Environment fingerprinting** for Python, RDKit, pandas, NumPy, scikit-learn and requests.
-- **Assay-context audit**: standard type, assay type/organism, pChEMBL dispersion, label agreement and heterogeneity flags.
-- **Quality filters** for excessive pChEMBL IQR and low measurement/label agreement.
-- **No assay shortcut**: assay context is metadata/quality evidence, not silently inserted into the molecular predictor.
-- **`pdl verify`** to detect missing or modified snapshot/run artifacts.
-- Dashboard now surfaces snapshot/run identity and assay heterogeneity.
+- public benchmark registry/adapters for **BBBP**, **ClinTox (`CT_TOX`)** and **ESOL**;
+- SHA-256 source sidecars for downloaded benchmark files;
+- canonical-SMILES deduplication and rejection of conflicting duplicate classification labels;
+- Bemis–Murcko scaffold train/validation/test splits;
+- model-family selection on validation scaffolds only;
+- validation-only **Platt calibration** for BBBP/ClinTox probabilities;
+- validation-calibrated **90% residual intervals** for ESOL;
+- Morgan/Tanimoto **applicability-domain similarity** for every prediction;
+- endpoint manifests containing source hashes, environment, split and model contract;
+- candidate annotation without collapsing endpoints into an arbitrary composite score.
+
+See [`docs/V0.4_ADMET.md`](docs/V0.4_ADMET.md) for the full contract.
 
 ## 1. Install
 
@@ -56,8 +60,6 @@ pytest
 
 ## 2. Freeze the real LRRK2 source dataset
 
-This is the preferred V0.3 path:
-
 ```bash
 pdl freeze-chembl \
   --target LRRK2 \
@@ -65,19 +67,9 @@ pdl freeze-chembl \
   --out data/snapshots/lrrk2
 ```
 
-It writes:
+This writes raw activities, assay context, cleaned molecules and `snapshot_manifest.json` with SHA-256 hashes and source/query provenance.
 
-```text
-data/snapshots/lrrk2/
-├── raw_activities.jsonl
-├── raw_assays.jsonl
-├── cleaned_molecules.csv
-└── snapshot_manifest.json
-```
-
-The manifest records the target, filtering contract, pChEMBL thresholds, aggregation rule, ChEMBL release metadata when available, row counts and SHA-256 hashes.
-
-A stricter sensitivity snapshot can be created independently:
+A stricter sensitivity snapshot can be generated separately:
 
 ```bash
 pdl freeze-chembl \
@@ -88,64 +80,26 @@ pdl freeze-chembl \
   --out data/snapshots/lrrk2_ic50_strict
 ```
 
-## 3. Verify the frozen source
+Verify the frozen source:
 
 ```bash
 pdl verify --manifest data/snapshots/lrrk2/snapshot_manifest.json
 ```
 
-A hash mismatch fails with exit code 2.
-
-## 4. Run the classical benchmark from that exact snapshot
+## 3. Run the LRRK2 classical benchmark
 
 ```bash
 pdl run \
   --input data/snapshots/lrrk2/cleaned_molecules.csv \
   --source-manifest data/snapshots/lrrk2/snapshot_manifest.json \
-  --out artifacts/lrrk2_v03 \
+  --out artifacts/lrrk2 \
   --features 96 \
   --seed 42
 ```
 
-The run now produces:
+The benchmark uses descriptor logistic regression, random forest, histogram gradient boosting and a 1,024-bit Morgan-fingerprint logistic baseline. Model family is selected on validation scaffolds; test scaffolds are evaluated after selection.
 
-```text
-artifacts/lrrk2_v03/
-├── dataset_prepared.csv
-├── assay_context_summary.json
-├── metrics.json
-├── best_model.joblib
-├── ranked_candidates.csv
-├── rimay_input.csv
-├── rimay_input_feature_map.csv
-├── report.md
-└── manifest.json
-```
-
-`manifest.json` links the benchmark back to the frozen source snapshot and hashes every generated artifact.
-
-## 5. Inspect assay context
-
-```bash
-pdl assay-audit \
-  --input data/snapshots/lrrk2/cleaned_molecules.csv \
-  --out artifacts/lrrk2_assay_audit.json
-```
-
-Per molecule, V0.3 can preserve:
-
-- measurement count;
-- assay and document count;
-- standard types;
-- assay types and assay organisms when supplied by ChEMBL;
-- pChEMBL median/min/max/IQR;
-- label agreement across repeated measurements;
-- transparent context-quality score;
-- assay-heterogeneity flag.
-
-These fields are **not part of the 96 molecular features sent to Rimay**.
-
-## 6. Baseline stability across scaffold splits
+Repeat scaffold seeds before making stability claims:
 
 ```bash
 pdl repeat \
@@ -154,101 +108,93 @@ pdl repeat \
   --seeds 11,23,42,71,101
 ```
 
-A single scaffold split can be unusually easy or hard; repeated seeds provide a better picture of stability.
+## 4. Train the V0.4 ADMET evidence models
 
-## 7. Rimay pilot
+Download public benchmark files:
+
+```bash
+pdl admet-fetch --dataset bbbp
+pdl admet-fetch --dataset clintox
+pdl admet-fetch --dataset esol
+```
+
+Train each endpoint independently:
+
+```bash
+pdl admet-train --dataset bbbp \
+  --input data/admet/bbbp.csv \
+  --out artifacts/admet/bbbp
+
+pdl admet-train --dataset clintox \
+  --input data/admet/clintox.csv.gz \
+  --out artifacts/admet/clintox
+
+pdl admet-train --dataset esol \
+  --input data/admet/esol.csv \
+  --out artifacts/admet/esol
+```
+
+Then annotate the LRRK2 candidates:
+
+```bash
+pdl admet-annotate \
+  --input artifacts/lrrk2/ranked_candidates.csv \
+  --models artifacts/admet \
+  --out artifacts/lrrk2/candidates_admet.csv
+```
+
+The output keeps each signal separate, for example:
+
+```text
+predicted_activity
+bbbp_probability
+bbbp_predictive_entropy
+bbbp_ad_similarity
+clintox_probability
+clintox_predictive_entropy
+clintox_ad_similarity
+esol_prediction
+esol_pi90_low
+esol_pi90_high
+esol_ad_similarity
+```
+
+A high BBBP prediction does not imply efficacy. A low ClinTox probability does not establish safety. ESOL is one developability signal, not a drug-quality verdict.
+
+## 5. Rimay quantum benchmark
+
+Create the frozen pilot handoff:
 
 ```bash
 pdl rimay-pilot \
-  --input artifacts/lrrk2_v03/rimay_input.csv \
+  --input artifacts/lrrk2/rimay_input.csv \
   --out artifacts/rimay_pilot \
   --size 300
 ```
 
-Run the same molecules/split through **Rimay – Quantum Feature Extraction – Simulator** first.
-
-Then import returned features or active-class probabilities:
+Run the same molecules/split through **Rimay – Quantum Feature Extraction – Simulator** first, then import returned features or probabilities:
 
 ```bash
 pdl rimay-compare \
-  --prepared artifacts/lrrk2_v03/dataset_prepared.csv \
+  --prepared artifacts/lrrk2/dataset_prepared.csv \
   --rimay-result path/to/rimay_result.csv \
-  --baseline artifacts/lrrk2_v03/metrics.json \
-  --out artifacts/lrrk2_v03/quantum_comparison.json
+  --baseline artifacts/lrrk2/metrics.json \
+  --out artifacts/lrrk2/quantum_comparison.json
 ```
 
-The comparator aligns by `molecule_id`, never row order.
-
-## Classical benchmark contract
-
-Model-family selection happens on **validation scaffolds only**. Each model is then refit on train + validation and evaluated once on untouched test scaffolds.
-
-Models:
-
-- descriptor logistic regression;
-- descriptor random forest;
-- descriptor histogram gradient boosting;
-- Morgan-fingerprint logistic regression.
-
-Metrics:
-
-- PR-AUC — primary model-selection metric;
-- ROC-AUC;
-- F1;
-- accuracy;
-- Brier score.
-
-Representations:
-
-- 96 selected RDKit numerical descriptors for the Rimay-comparable path;
-- 1,024-bit Morgan fingerprints as a stronger classical-only representation baseline.
-
-## ChEMBL cleaning contract
-
-Defaults:
-
-- human LRRK2: `CHEMBL1075104`;
-- `IC50` + `Ki`;
-- `standard_relation == "="`;
-- valid pChEMBL values;
-- canonical structure is the ML unit;
-- repeated measurements aggregated by median;
-- `pChEMBL >= 6` → active;
-- `pChEMBL <= 5` → inactive;
-- `5 < pChEMBL < 6` → ambiguous and excluded;
-- source assay/document/activity IDs preserved;
-- label dispersion and context heterogeneity recorded.
-
-IC50 and Ki from heterogeneous assays are not mechanistically identical. V0.3 therefore makes the heterogeneity visible, supports single-type sensitivity snapshots, and avoids pretending the pooled label is perfect ground truth.
-
-## Quantum win condition
-
-We do **not** ask whether Rimay beats a weak baseline.
-
-A credible positive result requires:
-
-1. same molecules;
-2. same frozen scaffold split;
-3. identical label contract;
-4. no preprocessing fitted on validation/test labels;
-5. improvement over the strongest classical comparator on held-out data;
-6. replication across multiple scaffold splits;
-7. uncertainty/statistical analysis;
-8. quantum compute/runtime/cost reported;
-9. no extrapolation from target binding to clinical efficacy.
-
-A negative result is also useful: if Rimay does not improve this benchmark, the repository should say so plainly.
+A credible quantum result requires the same molecules, frozen scaffold split, same label contract, no validation/test leakage, repeated splits, uncertainty/statistical analysis, and reported compute time/cost. A negative result is also useful.
 
 ## Scientific boundary
 
-LRRK2 target activity addresses only the first part of the chain:
+The pipeline currently addresses only pieces of:
 
 ```text
 binding
   → target engagement
   → cellular biology
   → brain exposure
-  → selectivity / safety
+  → ADME / safety
+  → selectivity
   → disease mechanism
   → patient subgroup
   → clinical efficacy
@@ -260,78 +206,68 @@ Outputs are **computational hypotheses**. Do not synthesize or administer compou
 
 ### V0.3 — reproducible source + assay context ✅
 
-Frozen ChEMBL snapshot, integrity hashes, release/query provenance, assay heterogeneity, quality diagnostics and verifiable run manifests.
+Frozen ChEMBL source snapshots, integrity hashes, release/query provenance, assay heterogeneity, label-quality diagnostics and verifiable run manifests.
 
-### V0.4 — real multi-property evidence
+### V0.4 — real multi-property evidence + uncertainty ✅
 
-Replace heuristic CNS/drug-likeness scores with independently validated predictors/datasets for:
+BBBP, ClinTox and ESOL benchmark models; calibration/prediction intervals; applicability-domain evidence; endpoint-specific candidate annotation.
 
-- BBB permeability;
-- solubility;
-- basic ADME;
-- toxicity endpoints;
-- calibrated uncertainty and applicability domain.
-
-The goal is **not** one magic score; preserve each endpoint and its uncertainty separately.
+**Scientific completion still requires running the real public datasets and recording the held-out metrics. Synthetic CI tests validate software, not biology.**
 
 ### V0.5 — selectivity + medicinal chemistry
 
-Add:
+Next build:
 
 - off-target/selectivity panel;
-- structural-alert flags;
-- novelty / nearest-neighbour evidence;
+- PAINS/reactive/structural-alert evidence;
+- novelty and nearest-neighbour chemistry;
 - synthesizability estimates;
-- disagreement analysis across model families.
+- family/model disagreement analysis;
+- explicit rejection reasons.
 
 ### V0.6 — real quantum benchmark
 
-Run Rimay Simulator and, if justified, hardware on the frozen benchmark:
-
+- Rimay Simulator, then hardware only if justified;
 - repeated scaffold splits;
-- quantum vs classical confidence intervals;
+- quantum-vs-classical confidence intervals;
 - compute time and cost;
-- feature/disagreement analysis;
-- explicit pass/fail decision on whether quantum adds value here.
+- disagreement/feature analysis;
+- explicit pass/fail decision on quantum value for this task.
 
-### V0.7 — virtual screening
+### V0.7 — large-library virtual screening
 
-Screen a larger external compound library while enforcing:
-
-- applicability-domain checks;
-- uncertainty thresholds;
+- 10K–100K+ external molecules;
+- frozen library provenance;
+- applicability-domain and uncertainty thresholds;
 - deduplication against training chemistry;
-- novelty/diversity selection;
-- reproducible library provenance.
+- novelty/diversity selection.
 
-### V0.8 — structural evidence
-
-Add orthogonal structure-based evidence where credible:
+### V0.8 — orthogonal structural evidence
 
 - protein-structure provenance;
 - conformer generation;
-- docking/pose scoring as supporting evidence, not truth;
-- consensus with ligand-based models;
-- failure/uncertainty flags.
+- docking/pose evidence as support, not truth;
+- consensus/conflict with ligand-based models;
+- uncertainty/failure flags.
 
-### V0.9 — candidate evidence cards + expert review gate
+### V0.9 — candidate evidence cards + expert gate
 
-Generate auditable candidate cards showing:
+Every finalist should expose:
 
-- source molecule identity;
-- predicted LRRK2 activity;
-- BBB/ADME/toxicity/selectivity estimates;
-- uncertainty/applicability domain;
-- nearest known chemistry;
-- classical vs quantum rank;
+- identity/provenance;
+- predicted LRRK2 activity and uncertainty;
+- BBBP/ADMET/toxicity/selectivity evidence;
+- applicability domain;
+- nearest known chemistry and novelty;
+- classical-vs-quantum disagreement;
 - structural evidence;
-- reasons to reject as well as reasons to investigate.
+- reasons to reject as well as investigate.
 
 No candidate advances without a human scientific review gate.
 
 ### V1.0 — experimentally actionable shortlist
 
-V1.0 is reached when the system can reproducibly take a frozen source/library snapshot and produce an **expert-reviewable top computational shortlist** with complete evidence provenance.
+V1.0 is reached when a frozen source/library snapshot can reproducibly produce an **expert-reviewable top computational shortlist** with complete evidence provenance.
 
 V1.0 success is **not** “we found a Parkinson's drug.” It is:
 
@@ -347,7 +283,11 @@ pdl verify --manifest artifacts/demo/manifest.json
 pdl serve --artifacts artifacts/demo
 ```
 
-Open `http://127.0.0.1:8000`.
+## References used by V0.4
+
+- Wu et al., *MoleculeNet: a benchmark for molecular machine learning*, `doi:10.1039/C7SC02664A`.
+- Martins et al., *A Bayesian Approach to in Silico Blood-Brain Barrier Penetration Modeling*, `doi:10.1021/ci300124c`.
+- Delaney, *ESOL: Estimating Aqueous Solubility Directly from Molecular Structure*, `doi:10.1021/ci034243x`.
 
 ## License
 

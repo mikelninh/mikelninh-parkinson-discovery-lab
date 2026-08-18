@@ -116,6 +116,7 @@ def run_pipeline(
         "inactive": int((1 - prepared["active_label"]).sum()),
         "best_model": metrics["best_model"],
         "rimay_status": "ready_for_pilot",
+        "admet_status": "V0.4 annotation available separately via pdl admet-annotate",
         "config_contract": config_contract,
         "config_sha256": canonical_json_sha256(config_contract),
         "environment": environment_fingerprint(),
