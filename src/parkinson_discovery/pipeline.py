@@ -106,7 +106,7 @@ def run_pipeline(
     manifest = {
         "manifest_type": "pdl_run",
         "schema_version": 1,
-        "version": "0.3.0",
+        "version": "0.4.0",
         "run_id": run_id,
         "molecules": len(prepared),
         "unique_scaffolds": int(prepared["scaffold"].nunique()),
@@ -116,6 +116,7 @@ def run_pipeline(
         "inactive": int((1 - prepared["active_label"]).sum()),
         "best_model": metrics["best_model"],
         "rimay_status": "ready_for_pilot",
+        "admet_status": "annotate_separately_with_pdl_admet_annotate",
         "config_contract": config_contract,
         "config_sha256": canonical_json_sha256(config_contract),
         "environment": environment_fingerprint(),
