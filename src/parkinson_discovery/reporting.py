@@ -28,7 +28,43 @@ def _candidate_table(ranked: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 
-def write_report(df: pd.DataFrame, metrics: dict, ranked: pd.DataFrame, out_dir: Path) -> Path:
+def _assay_context_text(summary: dict[str, object] | None) -> str:
+    if not summary or len(summary) <= 1:
+        return "No assay-context metadata was present in this input dataset."
+    lines = []
+    hetero = summary.get("heterogeneous_molecules")
+    fraction = summary.get("heterogeneous_fraction")
+    if hetero is not None and fraction is not None:
+        lines.append(f"- Heterogeneous assay context: **{hetero} molecules ({float(fraction):.1%})**")
+    iqr = summary.get("pchembl_iqr") or {}
+    if isinstance(iqr, dict) and iqr.get("median") is not None:
+        lines.append(
+            f"- pChEMBL IQR: median **{float(iqr['median']):.3f}**, "
+            f"90th percentile **{float(iqr['p90']):.3f}**"
+        )
+    agreement = summary.get("label_agreement") or {}
+    if isinstance(agreement, dict) and agreement.get("median") is not None:
+        lines.append(
+            f"- Measurement/label agreement: median **{float(agreement['median']):.3f}**; "
+            f"below 0.75: **{int(agreement.get('below_0_75', 0))} molecules**"
+        )
+    types = summary.get("molecules_by_standard_type")
+    if types:
+        lines.append(f"- Standard-type coverage: `{types}`")
+    lines.append(
+        "- Assay context is used for provenance, quality diagnostics and sensitivity filtering; "
+        "it is **not silently used as a molecular predictor**, avoiding an assay-confounding shortcut."
+    )
+    return "\n".join(lines)
+
+
+def write_report(
+    df: pd.DataFrame,
+    metrics: dict,
+    ranked: pd.DataFrame,
+    out_dir: Path,
+    assay_summary: dict[str, object] | None = None,
+) -> Path:
     report = f"""# Parkinson Discovery Lab — run report
 
 ## Dataset
@@ -38,6 +74,10 @@ def write_report(df: pd.DataFrame, metrics: dict, ranked: pd.DataFrame, out_dir:
 - Inactive: **{int((1-df['active_label']).sum())}**
 - Unique scaffolds: **{df['scaffold'].nunique()}**
 - Split: {df['split'].value_counts().to_dict()}
+
+## Assay-context audit
+
+{_assay_context_text(assay_summary)}
 
 ## Model selection — validation scaffolds only
 
@@ -67,7 +107,11 @@ These ranks are **computational hypotheses, not drugs and not evidence of clinic
 
 ## Quantum comparison
 
-`rimay_input.csv` contains the same molecules, labels and scaffold split plus 96 standardized numerical features. A quantum result is only meaningful if Kipu/Rimay follows the same no-leakage protocol and is evaluated on the untouched test scaffolds against the classical benchmark above. No quantum-advantage claim is made by this repository alone.
+`rimay_input.csv` contains the same molecules, labels and scaffold split plus standardized numerical features. A quantum result is only meaningful if Kipu/Rimay follows the same no-leakage protocol and is evaluated on the untouched test scaffolds against the classical benchmark above. No quantum-advantage claim is made by this repository alone.
+
+## Reproducibility
+
+`manifest.json` records the run contract, environment fingerprint, optional frozen ChEMBL snapshot reference and SHA-256 hashes for the generated artifacts. Run `pdl verify --manifest <run>/manifest.json` to detect missing or changed artifacts.
 """
     path = out_dir / "report.md"
     path.write_text(report, encoding="utf-8")
