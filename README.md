@@ -2,71 +2,55 @@
 
 An evidence-first molecular ML research platform for **Parkinson's disease drug-discovery hypotheses**, starting with human **LRRK2**.
 
-The platform is deliberately designed to make claims harder, not easier: every layer should expose provenance, uncertainty, applicability limits and reasons a candidate might fail.
+The platform is deliberately designed to make claims harder, not easier: every layer exposes provenance, uncertainty, applicability limits and reasons a candidate might fail.
 
 > **Goal:** reproducibly narrow a large chemical search space into a small, evidence-rich set of hypotheses worth experimental testing — and quantify whether quantum feature extraction improves that process.
 
-## Current milestone: V0.5 — selectivity + medicinal chemistry ✅
+## Current milestone: V0.6 — rigorous quantum evidence ✅
 
 ```text
-frozen LRRK2 ChEMBL evidence
-          ↓
-classical activity benchmark ─── Rimay-ready benchmark
-          ↓
-BBBP / ClinTox / ESOL
-          ↓
-medicinal-chemistry evidence
-  • PAINS/BRENK/NIH/ZINC alerts
-  • QED + complexity
-  • nearest known chemistry
-  • novelty proxy
-          ↓
-off-target surveillance
-  • configurable kinase panel
-  • target-specific ChEMBL snapshots
-  • target-specific scaffold models
-          ↓
-reasons to investigate
-+ reasons to reject
+frozen ChEMBL LRRK2
+       ↓
+classical activity ───── Rimay features/predictions
+       │                         │
+       └──── same test molecules ┘
+                    ↓
+           paired bootstrap
+                    ↓
+       PR-AUC / ROC-AUC / Brier
+                    ↓
+       disagreement molecules
+                    ↓
+     repeat across scaffold seeds
+                    ↓
+       PASS / FAIL / INCONCLUSIVE
+                    ↓
+    runtime + cost + backend context
 ```
 
-V0.5 does **not** claim that a predicted molecule is a drug, that low predicted toxicity establishes safety, that an alert automatically disqualifies chemistry, or that a computational off-target probability equals an experimental selectivity ratio.
+A statistical predictive gain is **not automatically quantum computational advantage**. V0.6 keeps those claims separate.
 
-## Milestones already built
+## Built milestones
 
 ### V0.3 — reproducible source + assay context ✅
-
-- frozen ChEMBL snapshots;
-- raw activity + assay provenance;
-- SHA-256 integrity manifests;
-- deterministic run IDs;
-- assay heterogeneity and label-quality diagnostics;
-- Bemis–Murcko scaffold benchmark contract.
+Frozen ChEMBL snapshots, raw activity/assay provenance, SHA-256 manifests, deterministic run IDs, label-quality diagnostics and Bemis–Murcko scaffold splits.
 
 ### V0.4 — ADMET evidence + uncertainty ✅
-
-- BBBP blood-brain-barrier classification;
-- ClinTox toxicity classification;
-- ESOL aqueous-solubility regression;
-- validation-only calibration / prediction intervals;
-- applicability-domain similarity;
-- endpoint-specific outputs rather than a hidden “drug score”.
-
-See [`docs/V0.4_ADMET.md`](docs/V0.4_ADMET.md).
+BBBP, ClinTox and ESOL benchmark models with validation-only calibration/prediction intervals and applicability-domain evidence. See [`docs/V0.4_ADMET.md`](docs/V0.4_ADMET.md).
 
 ### V0.5 — selectivity + medicinal chemistry ✅
+RDKit structural-alert evidence, QED/complexity, nearest-known chemistry, novelty proxy, configurable ChEMBL-backed off-target surveillance and per-target models. See [`docs/V0.5_SELECTIVITY_MEDCHEM.md`](docs/V0.5_SELECTIVITY_MEDCHEM.md).
 
-- RDKit PAINS, BRENK, NIH and ZINC structural-alert evidence;
-- QED and transparent molecular-complexity descriptors;
-- nearest-known Morgan/Tanimoto chemistry + explicit novelty proxy;
-- medchem review flags rather than automatic rejection;
-- configurable LRRK2 off-target surveillance panel;
-- live ChEMBL target resolution that fails on ambiguity instead of guessing;
-- frozen per-target selectivity datasets;
-- off-target models trained only where the data support a binary benchmark;
-- individual predicted off-target probabilities and worst predicted off-target.
+### V0.6 — paired quantum evidence ✅
+- exact molecule/split alignment;
+- frozen classical-model comparison;
+- paired bootstrap confidence intervals;
+- molecule-level disagreement analysis;
+- simulator/QPU/backend/runtime/cost provenance;
+- at least three repeated scaffold trials before a project-level decision;
+- explicit pass/fail/inconclusive rules.
 
-See [`docs/V0.5_SELECTIVITY_MEDCHEM.md`](docs/V0.5_SELECTIVITY_MEDCHEM.md).
+See [`docs/V0.6_QUANTUM_EVIDENCE.md`](docs/V0.6_QUANTUM_EVIDENCE.md).
 
 ## Quick start
 
@@ -77,23 +61,21 @@ pip install -e ".[dev]"
 pytest
 ```
 
-### 1. Freeze the real LRRK2 source
+## Core research workflow
+
+### 1. Freeze LRRK2 evidence
 
 ```bash
-pdl freeze-chembl \
-  --target LRRK2 \
-  --standard-types IC50,Ki \
-  --out data/snapshots/lrrk2
+pdl freeze-chembl --target LRRK2 --standard-types IC50,Ki --out data/snapshots/lrrk2
 ```
 
-### 2. Establish the classical activity benchmark
+### 2. Classical activity benchmark
 
 ```bash
 pdl run \
   --input data/snapshots/lrrk2/cleaned_molecules.csv \
   --source-manifest data/snapshots/lrrk2/snapshot_manifest.json \
-  --out artifacts/lrrk2 \
-  --features 96
+  --out artifacts/lrrk2 --features 96
 
 pdl repeat \
   --input data/snapshots/lrrk2/cleaned_molecules.csv \
@@ -101,7 +83,7 @@ pdl repeat \
   --seeds 11,23,42,71,101
 ```
 
-### 3. Train the V0.4 property models
+### 3. BBBP / ClinTox / ESOL
 
 ```bash
 pdl admet-fetch --dataset bbbp
@@ -118,29 +100,19 @@ pdl admet-annotate \
   --out artifacts/lrrk2/candidates_admet.csv
 ```
 
-### 4. Add medicinal-chemistry evidence
+### 4. Medicinal chemistry + selectivity
 
 ```bash
 pdl medchem-annotate \
   --input artifacts/lrrk2/candidates_admet.csv \
   --reference data/snapshots/lrrk2/cleaned_molecules.csv \
   --out artifacts/lrrk2/candidates_medchem.csv
-```
-
-### 5. Build the selectivity surveillance panel
-
-The default panel is literature-seeded and configurable. It is **not** presented as a universal LRRK2 off-target panel.
-
-```bash
-pdl selectivity-resolve --target TTK
 
 pdl selectivity-freeze \
   --targets LRRK1,TTK,STK10,MAPK14,JNK2,CLK1,JNK3,DYRK2,SLK,DDR2,STK17B \
   --out data/selectivity
 
-pdl selectivity-train \
-  --input data/selectivity \
-  --out artifacts/selectivity
+pdl selectivity-train --input data/selectivity --out artifacts/selectivity
 
 pdl selectivity-annotate \
   --input artifacts/lrrk2/candidates_medchem.csv \
@@ -148,30 +120,46 @@ pdl selectivity-annotate \
   --out artifacts/lrrk2/candidates_selectivity.csv
 ```
 
-### 6. Prepare the Rimay experiment
+The default panel is literature-seeded surveillance, not a universal selectivity panel. Experimental kinome profiling remains the serious-lead reference test.
+
+### 5. Rimay pilot
 
 ```bash
 pdl rimay-pilot \
   --input artifacts/lrrk2/rimay_input.csv \
-  --out artifacts/rimay_pilot \
-  --size 300
+  --out artifacts/rimay_pilot --size 300
 ```
 
-Run the exact frozen pilot through **Rimay – Quantum Feature Extraction – Simulator**, then import the returned features/probabilities:
+Run the exact frozen input through Rimay, preserve `molecule_id`, labels and split, then evaluate one trial:
 
 ```bash
-pdl rimay-compare \
+pdl quantum-trial \
   --prepared artifacts/lrrk2/dataset_prepared.csv \
+  --classical-model artifacts/lrrk2/best_model.joblib \
   --rimay-result path/to/rimay_result.csv \
-  --baseline artifacts/lrrk2/metrics.json \
-  --out artifacts/lrrk2/quantum_comparison.json
+  --out artifacts/quantum/seed42 \
+  --backend-type simulator \
+  --backend-name "Rimay Simulator" \
+  --quantum-runtime-seconds 420 \
+  --quantum-cost-eur 0
 ```
 
-A negative quantum result is still a useful result. We do not optimise the experiment to make quantum look good.
+Repeat on independent frozen scaffold trials, then:
+
+```bash
+pdl quantum-meta \
+  --trials \
+    artifacts/quantum/seed11/trial.json \
+    artifacts/quantum/seed23/trial.json \
+    artifacts/quantum/seed42/trial.json \
+    artifacts/quantum/seed71/trial.json \
+    artifacts/quantum/seed101/trial.json \
+  --out artifacts/quantum/meta_benchmark.json
+```
+
+**Primary metric:** PR-AUC. Fewer than three trials cannot yield a project-level pass. A negative result remains useful.
 
 ## Scientific boundary
-
-The project currently covers only pieces of:
 
 ```text
 binding
@@ -185,56 +173,31 @@ binding
   → clinical efficacy
 ```
 
-All outputs are **computational hypotheses**. Do not synthesize or administer compounds based on this software.
+The project currently models only pieces of this chain. All outputs are **computational hypotheses**. Do not synthesize or administer compounds based on this software.
 
 ## Roadmap to V1.0
 
-### V0.6 — rigorous quantum experiment
-
-- repeated classical-vs-Rimay scaffold comparisons;
-- paired bootstrap/confidence intervals;
-- compute runtime and cost accounting;
-- prediction-disagreement analysis;
-- explicit **pass / inconclusive / fail** decision on quantum value for this task.
-
 ### V0.7 — large-library virtual screening
-
 - frozen 10K–100K+ molecule library snapshots;
-- streaming/batched inference;
-- duplicate and known-chemistry exclusion;
-- applicability-domain and uncertainty gates;
-- chemistry-diverse shortlist selection rather than 100 near-identical analogues.
+- batched inference and provenance;
+- known-chemistry deduplication;
+- applicability-domain + uncertainty gates;
+- chemistry-diverse shortlist selection.
 
 ### V0.8 — orthogonal structural evidence
-
 - target-structure provenance;
-- ligand conformers;
-- docking/pose evidence as a separate supporting signal;
+- conformer generation;
+- docking/pose evidence as a separate signal;
 - model-vs-structure agreement/conflict;
-- failure flags instead of pretending docking scores are binding free energies.
+- failure flags rather than treating docking score as truth.
 
 ### V0.9 — candidate evidence cards + expert gate
-
-Every finalist must expose:
-
-- identity and full provenance;
-- LRRK2 activity prediction + uncertainty;
-- BBBP / ClinTox / ESOL evidence;
-- selectivity surveillance;
-- applicability domain;
-- nearest known chemistry / novelty;
-- structural alerts and complexity;
-- classical-vs-quantum disagreement;
-- structural evidence;
-- explicit reasons to reject and investigate.
-
-No candidate advances without a human scientific review gate.
+Every finalist exposes identity/provenance, activity, uncertainty, BBBP/ADMET/toxicity, selectivity, applicability domain, novelty, alerts, classical-vs-quantum disagreement, structural evidence and explicit reasons to reject/investigate. No candidate advances without human scientific review.
 
 ### V1.0 — experimentally actionable computational shortlist
+A frozen source dataset + frozen screening library reproducibly yields a small expert-reviewable shortlist with complete evidence provenance.
 
-V1.0 is complete when a frozen source dataset and frozen screening library can reproducibly produce a small, expert-reviewable shortlist with all evidence and provenance attached.
-
-**V1.0 is not “we found a Parkinson's drug”.** It is a research system capable of producing defensible hypotheses for laboratory testing.
+**V1.0 is not “we found a Parkinson's drug”.** It is a defensible hypothesis-generation system for deciding what is worth laboratory testing.
 
 ## Development
 
