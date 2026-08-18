@@ -17,6 +17,7 @@ from .medchem import write_medchem_artifact
 from .pipeline import run_pipeline
 from .provenance import verify_manifest
 from .quantum import compare_rimay_result, create_rimay_pilot
+from .quantum_evidence import run_quantum_trial, summarize_quantum_trials
 from .repeats import DEFAULT_SEEDS, run_repeated_scaffold_benchmark
 from .selectivity import (
     DEFAULT_LRRK2_PANEL,
@@ -168,11 +169,36 @@ def main() -> None:
     pilot.add_argument("--size", type=int, default=300)
     pilot.add_argument("--seed", type=int, default=42)
 
-    compare = sub.add_parser("rimay-compare", help="Compare returned Rimay features/predictions to baseline")
+    compare = sub.add_parser("rimay-compare", help="Legacy single Rimay-vs-classical aggregate comparison")
     compare.add_argument("--prepared", required=True, help="dataset_prepared.csv")
     compare.add_argument("--rimay-result", required=True)
     compare.add_argument("--baseline", required=True, help="metrics.json")
     compare.add_argument("--out", default="artifacts/run/quantum_comparison.json")
+
+    qtrial = sub.add_parser(
+        "quantum-trial",
+        help="Run one paired molecule-level classical-vs-Rimay trial with bootstrap confidence intervals",
+    )
+    qtrial.add_argument("--prepared", required=True)
+    qtrial.add_argument("--classical-model", required=True)
+    qtrial.add_argument("--rimay-result", required=True)
+    qtrial.add_argument("--out", required=True)
+    qtrial.add_argument("--bootstrap", type=int, default=2000)
+    qtrial.add_argument("--seed", type=int, default=42)
+    qtrial.add_argument("--backend-type", choices=["simulator", "qpu", "unknown"], default="unknown")
+    qtrial.add_argument("--backend-name", default=None)
+    qtrial.add_argument("--quantum-runtime-seconds", type=float, default=None)
+    qtrial.add_argument("--quantum-cost-eur", type=float, default=None)
+    qtrial.add_argument("--provider", default="Kipu Quantum")
+
+    qmeta = sub.add_parser(
+        "quantum-meta",
+        help="Aggregate at least three frozen scaffold trials into a project-level quantum-value decision",
+    )
+    qmeta.add_argument("--trials", nargs="+", required=True, help="trial.json files")
+    qmeta.add_argument("--out", default="artifacts/quantum/meta_benchmark.json")
+    qmeta.add_argument("--bootstrap", type=int, default=5000)
+    qmeta.add_argument("--seed", type=int, default=42)
 
     kipu = sub.add_parser("kipu-run", help="Invoke a subscribed Kipu managed service using official SDK")
     kipu.add_argument("--endpoint", required=True, help="Gateway endpoint from your Kipu application subscription")
@@ -297,6 +323,29 @@ def main() -> None:
             Path(args.prepared), Path(args.rimay_result), Path(args.baseline), Path(args.out)
         )
         print(json.dumps(result, indent=2))
+    elif args.command == "quantum-trial":
+        result = run_quantum_trial(
+            Path(args.prepared),
+            Path(args.classical_model),
+            Path(args.rimay_result),
+            Path(args.out),
+            n_bootstrap=args.bootstrap,
+            seed=args.seed,
+            backend_type=args.backend_type,
+            backend_name=args.backend_name,
+            quantum_runtime_seconds=args.quantum_runtime_seconds,
+            quantum_cost_eur=args.quantum_cost_eur,
+            provider=args.provider,
+        )
+        print(json.dumps(result, indent=2, default=str))
+    elif args.command == "quantum-meta":
+        result = summarize_quantum_trials(
+            [Path(path) for path in args.trials],
+            Path(args.out),
+            n_bootstrap=args.bootstrap,
+            seed=args.seed,
+        )
+        print(json.dumps(result, indent=2, default=str))
     elif args.command == "kipu-run":
         request = json.loads(Path(args.request).read_text(encoding="utf-8"))
         result = run_managed_service(args.endpoint, request, Path(args.out), args.timeout)
