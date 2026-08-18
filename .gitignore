@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+.DS_Store
+*.egg-info/
+dist/
+build/
+# Real ChEMBL pulls and model artifacts can be large/reproducible
+data/*.csv
+!data/.gitkeep
+artifacts/*
+!artifacts/.gitkeep

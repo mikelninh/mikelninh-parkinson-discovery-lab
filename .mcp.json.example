@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "qhub-mcp": {
+      "type": "http",
+      "url": "https://api.hub.kipu-quantum.com/mcp"
+    }
+  }
+}
